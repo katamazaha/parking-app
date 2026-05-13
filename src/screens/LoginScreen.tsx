@@ -12,28 +12,46 @@ import {
   View,
 } from "react-native";
 
+import { api } from "../services/api";
+import type { AppUser } from "../types/auth";
+
 const LOGO = require("../../assets/images/hust_logo.png");
 
 type LoginScreenProps = {
-  onLoginSuccess: () => void;
+  onLoginSuccess: (user: AppUser) => void;
 };
 
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [studentCode, setStudentCode] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleLogin = () => {
-    if (!studentCode || !password) {
-      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ mã sinh viên và mật khẩu");
+  const handleLogin = async () => {
+    if (!studentCode.trim() || !password.trim()) {
+      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ tài khoản và mật khẩu");
       return;
     }
 
-    if (studentCode === "SV001" && password === "123456") {
-      onLoginSuccess();
-      return;
-    }
+    try {
+      const response = await api.post("/auth/login", {
+        username: studentCode.trim().toUpperCase(),
+        password: password.trim(),
+      });
 
-    Alert.alert("Lỗi", "Sai mã sinh viên hoặc mật khẩu");
+      if (response.data.success) {
+        onLoginSuccess(response.data.user);
+        return;
+      }
+
+      Alert.alert("Lỗi", response.data.message || "Đăng nhập thất bại");
+    } catch (error: any) {
+      console.log("LOGIN ERROR:", error?.message);
+      console.log("LOGIN ERROR DATA:", error?.response?.data);
+
+      Alert.alert(
+        "Lỗi kết nối",
+        error?.message || "Không thể kết nối đến backend"
+      );
+    }
   };
 
   return (
@@ -54,10 +72,10 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           <Text style={styles.title}>Smart Parking</Text>
           <Text style={styles.subtitle}>Đại học Bách khoa Hà Nội</Text>
 
-          <Text style={styles.label}>Mã sinh viên</Text>
+          <Text style={styles.label}>Tài khoản</Text>
           <TextInput
             style={styles.input}
-            placeholder="Ví dụ: SV001"
+            placeholder="Nhập mã sinh viên"
             value={studentCode}
             onChangeText={setStudentCode}
             autoCapitalize="characters"
@@ -77,8 +95,6 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           <Pressable style={styles.button} onPress={handleLogin}>
             <Text style={styles.buttonText}>Đăng nhập</Text>
           </Pressable>
-
-          <Text style={styles.demoText}>Tài khoản demo: SV001 / 123456</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

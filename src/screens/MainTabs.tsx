@@ -1,6 +1,8 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+
+import { api } from "../services/api";
+import type { AppUser } from "../types/auth";
 
 import HistoryScreen from "./HistoryScreen";
 import HomeScreen from "./HomeScreen";
@@ -10,6 +12,7 @@ import TransactionHistoryScreen from "./TransactionHistoryScreen";
 import WalletScreen from "./WalletScreen";
 
 type MainTabsProps = {
+  user: AppUser;
   onLogout: () => void;
 };
 
@@ -30,7 +33,7 @@ export type ParkingSession = {
   checkinTime: string;
   checkoutTime: string;
   fee: number;
-  status: "completed";
+  status: "parking" | "completed";
 };
 
 type CurrentParking = {
@@ -38,260 +41,91 @@ type CurrentParking = {
   checkinTime: string;
 };
 
-type AppData = {
-  balance: number;
-  availableSlots: number;
-  currentParking: CurrentParking | null;
-  transactions: Transaction[];
-  parkingSessions: ParkingSession[];
-};
-
-const STORAGE_KEY = "SMART_PARKING_APP_DATA";
-
-const DEFAULT_DATA: AppData = {
-  balance: 50000,
-  availableSlots: 25,
-  currentParking: {
-    plateNumber: "30B-67890",
-    checkinTime: "06/05/2026 08:10",
-  },
-  transactions: [
-    {
-      id: 1,
-      type: "topup",
-      title: "Nạp tiền",
-      amount: 50000,
-      createdAt: "06/05/2026 08:00",
-    },
-    {
-      id: 2,
-      type: "parking_fee",
-      title: "Phí gửi xe",
-      amount: -3000,
-      createdAt: "06/05/2026 11:15",
-    },
-  ],
-  parkingSessions: [
-    {
-      id: 1,
-      plateNumber: "29A-12345",
-      checkinTime: "06/05/2026 07:30",
-      checkoutTime: "06/05/2026 11:15",
-      fee: 3000,
-      status: "completed",
-    },
-  ],
-};
-
-export default function MainTabs({ onLogout }: MainTabsProps) {
+export default function MainTabs({ user, onLogout }: MainTabsProps) {
   const [activeScreen, setActiveScreen] = useState<ScreenKey>("home");
 
-  const [balance, setBalance] = useState(DEFAULT_DATA.balance);
-  const [availableSlots, setAvailableSlots] = useState(
-    DEFAULT_DATA.availableSlots
-  );
-  const [currentParking, setCurrentParking] =
-    useState<CurrentParking | null>(DEFAULT_DATA.currentParking);
-  const [transactions, setTransactions] = useState<Transaction[]>(
-    DEFAULT_DATA.transactions
-  );
-  const [parkingSessions, setParkingSessions] = useState<ParkingSession[]>(
-    DEFAULT_DATA.parkingSessions
-  );
+  const studentCode = user.studentCode || user.username;
 
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [balance, setBalance] = useState(0);
+  const [availableSlots, setAvailableSlots] = useState(0);
+  const [currentParking, setCurrentParking] = useState<CurrentParking | null>(
+    null
+  );
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [parkingSessions, setParkingSessions] = useState<ParkingSession[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadStudentData = async () => {
+    try {
+      const summaryResponse = await api.get(`/student/${studentCode}/summary`);
+      const transactionsResponse = await api.get(
+        `/student/${studentCode}/transactions`
+      );
+      const sessionsResponse = await api.get(
+        `/student/${studentCode}/parking-sessions`
+      );
+
+      if (summaryResponse.data.success) {
+        setBalance(summaryResponse.data.student.balance);
+        setAvailableSlots(summaryResponse.data.availableSlots);
+
+        if (summaryResponse.data.currentParking) {
+          setCurrentParking({
+            plateNumber: summaryResponse.data.currentParking.plateNumber,
+            checkinTime: summaryResponse.data.currentParking.checkinTime,
+          });
+        } else {
+          setCurrentParking(null);
+        }
+      }
+
+      setTransactions(
+        transactionsResponse.data.map((item: any) => ({
+          id: item.id,
+          type: item.type,
+          title: item.type === "topup" ? "Nạp tiền" : "Phí gửi xe",
+          amount: item.amount,
+          createdAt: item.createdAt,
+        }))
+      );
+
+      setParkingSessions(
+        sessionsResponse.data.map((item: any) => ({
+          id: item.id,
+          plateNumber: item.plateNumber,
+          checkinTime: item.checkinTime,
+          checkoutTime: item.checkoutTime || "Chưa ra",
+          fee: item.fee || 0,
+          status: item.status,
+        }))
+      );
+    } catch (error: any) {
+      console.log("LOAD STUDENT DATA ERROR:", error?.message);
+      Alert.alert("Lỗi", "Không thể tải dữ liệu sinh viên từ backend");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    loadData();
+    loadStudentData();
   }, []);
 
-  useEffect(() => {
-    if (!isLoaded) {
-      return;
+  const goToScreen = (screen: ScreenKey) => {
+    setActiveScreen(screen);
+
+    if (
+      screen === "home" ||
+      screen === "wallet" ||
+      screen === "parkingHistory" ||
+      screen === "transactions"
+    ) {
+      loadStudentData();
     }
-
-    saveData({
-      balance,
-      availableSlots,
-      currentParking,
-      transactions,
-      parkingSessions,
-    });
-  }, [
-    balance,
-    availableSlots,
-    currentParking,
-    transactions,
-    parkingSessions,
-    isLoaded,
-  ]);
-
-  const loadData = async () => {
-    try {
-      const savedData = await AsyncStorage.getItem(STORAGE_KEY);
-
-      if (savedData) {
-        const parsedData: AppData = JSON.parse(savedData);
-
-        setBalance(parsedData.balance);
-        setAvailableSlots(parsedData.availableSlots);
-        setCurrentParking(parsedData.currentParking);
-        setTransactions(parsedData.transactions);
-        setParkingSessions(parsedData.parkingSessions);
-      }
-    } catch (error) {
-      Alert.alert("Lỗi", "Không thể tải dữ liệu đã lưu");
-    } finally {
-      setIsLoaded(true);
-    }
-  };
-
-  const saveData = async (data: AppData) => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (error) {
-      Alert.alert("Lỗi", "Không thể lưu dữ liệu cục bộ");
-    }
-  };
-
-  const resetData = async () => {
-    try {
-      await AsyncStorage.removeItem(STORAGE_KEY);
-
-      setBalance(DEFAULT_DATA.balance);
-      setAvailableSlots(DEFAULT_DATA.availableSlots);
-      setCurrentParking(DEFAULT_DATA.currentParking);
-      setTransactions(DEFAULT_DATA.transactions);
-      setParkingSessions(DEFAULT_DATA.parkingSessions);
-
-      Alert.alert("Thành công", "Đã reset dữ liệu demo");
-    } catch (error) {
-      Alert.alert("Lỗi", "Không thể reset dữ liệu");
-    }
-  };
-
-  const handleTopupSuccess = (amount: number) => {
-    setBalance((currentBalance) => currentBalance + amount);
-
-    const newTransaction: Transaction = {
-      id: Date.now(),
-      type: "topup",
-      title: "Nạp tiền",
-      amount,
-      createdAt: getCurrentTime(),
-    };
-
-    setTransactions((currentTransactions) => [
-      newTransaction,
-      ...currentTransactions,
-    ]);
-
-    setActiveScreen("wallet");
-  };
-
-  const handleCheckin = (plateNumber: string) => {
-    const formattedPlate = plateNumber.trim().toUpperCase();
-
-    if (currentParking) {
-      Alert.alert("Thông báo", "Sinh viên đang có xe trong bãi");
-      return;
-    }
-
-    if (!formattedPlate) {
-      Alert.alert("Thiếu biển số", "Vui lòng nhập biển số xe");
-      return;
-    }
-
-    if (availableSlots <= 0) {
-      Alert.alert("Bãi đã đầy", "Hiện không còn chỗ trống");
-      return;
-    }
-
-    const newCurrentParking: CurrentParking = {
-      plateNumber: formattedPlate,
-      checkinTime: getCurrentTime(),
-    };
-
-    setCurrentParking(newCurrentParking);
-    setAvailableSlots((currentSlots) => currentSlots - 1);
-
-    Alert.alert(
-      "Vào bãi thành công",
-      `Đã ghi nhận biển số ${newCurrentParking.plateNumber}`
-    );
-  };
-
-  const handleCheckout = (plateNumberOut: string) => {
-    const parkingFee = 3000;
-    const formattedPlateOut = plateNumberOut.trim().toUpperCase();
-
-    if (!currentParking) {
-      Alert.alert("Thông báo", "Hiện tại sinh viên chưa có xe trong bãi");
-      return;
-    }
-
-    if (!formattedPlateOut) {
-      Alert.alert("Thiếu biển số", "Vui lòng nhập biển số xe lúc ra");
-      return;
-    }
-
-    if (formattedPlateOut !== currentParking.plateNumber) {
-      Alert.alert(
-        "Biển số không khớp",
-        `Biển số lúc vào: ${currentParking.plateNumber}\nBiển số lúc ra: ${formattedPlateOut}`
-      );
-      return;
-    }
-
-    if (balance < parkingFee) {
-      Alert.alert("Không đủ số dư", "Vui lòng nạp tiền trước khi ra bãi");
-      return;
-    }
-
-    const now = getCurrentTime();
-
-    const newTransaction: Transaction = {
-      id: Date.now(),
-      type: "parking_fee",
-      title: "Phí gửi xe",
-      amount: -parkingFee,
-      createdAt: now,
-    };
-
-    const newParkingSession: ParkingSession = {
-      id: Date.now() + 1,
-      plateNumber: currentParking.plateNumber,
-      checkinTime: currentParking.checkinTime,
-      checkoutTime: now,
-      fee: parkingFee,
-      status: "completed",
-    };
-
-    setBalance((currentBalance) => currentBalance - parkingFee);
-
-    setTransactions((currentTransactions) => [
-      newTransaction,
-      ...currentTransactions,
-    ]);
-
-    setParkingSessions((currentSessions) => [
-      newParkingSession,
-      ...currentSessions,
-    ]);
-
-    setAvailableSlots((currentSlots) => currentSlots + 1);
-    setCurrentParking(null);
-
-    Alert.alert(
-      "Ra bãi thành công",
-      `Biển số khớp: ${formattedPlateOut}\nĐã trừ ${formatMoney(
-        parkingFee
-      )} phí gửi xe`
-    );
   };
 
   const renderScreen = () => {
-    if (!isLoaded) {
+    if (isLoading) {
       return (
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Đang tải dữ liệu...</Text>
@@ -302,11 +136,10 @@ export default function MainTabs({ onLogout }: MainTabsProps) {
     if (activeScreen === "home") {
       return (
         <HomeScreen
+          user={user}
           balance={balance}
           availableSlots={availableSlots}
           currentParking={currentParking}
-          onCheckin={handleCheckin}
-          onCheckout={handleCheckout}
         />
       );
     }
@@ -317,7 +150,7 @@ export default function MainTabs({ onLogout }: MainTabsProps) {
           balance={balance}
           transactions={transactions}
           onTopup={() => setActiveScreen("topup")}
-          onSeeAllTransactions={() => setActiveScreen("transactions")}
+          onSeeAllTransactions={() => goToScreen("transactions")}
         />
       );
     }
@@ -326,8 +159,15 @@ export default function MainTabs({ onLogout }: MainTabsProps) {
       return (
         <TopupScreen
           balance={balance}
-          onBack={() => setActiveScreen("wallet")}
-          onTopupSuccess={handleTopupSuccess}
+          studentCode={studentCode}
+          onBack={() => goToScreen("wallet")}
+          onTopupRequestCreated={() => {
+            Alert.alert(
+              "Đã tạo yêu cầu",
+              "Vui lòng chờ người quản lý xác nhận giao dịch"
+            );
+            goToScreen("wallet");
+          }}
         />
       );
     }
@@ -340,7 +180,16 @@ export default function MainTabs({ onLogout }: MainTabsProps) {
       return <TransactionHistoryScreen transactions={transactions} />;
     }
 
-    return <ProfileScreen onLogout={onLogout} onResetData={resetData} />;
+    return (
+      <ProfileScreen
+        user={user}
+        onLogout={onLogout}
+        onResetData={() => {
+          loadStudentData();
+          Alert.alert("Đã tải lại", "Dữ liệu đã được đồng bộ từ backend");
+        }}
+      />
+    );
   };
 
   const activeTab: TabKey =
@@ -354,25 +203,25 @@ export default function MainTabs({ onLogout }: MainTabsProps) {
         <TabButton
           title="Trang chủ"
           active={activeTab === "home"}
-          onPress={() => setActiveScreen("home")}
+          onPress={() => goToScreen("home")}
         />
 
         <TabButton
           title="Ví"
           active={activeTab === "wallet"}
-          onPress={() => setActiveScreen("wallet")}
+          onPress={() => goToScreen("wallet")}
         />
 
         <TabButton
           title="Gửi xe"
           active={activeTab === "parkingHistory"}
-          onPress={() => setActiveScreen("parkingHistory")}
+          onPress={() => goToScreen("parkingHistory")}
         />
 
         <TabButton
           title="Giao dịch"
           active={activeTab === "transactions"}
-          onPress={() => setActiveScreen("transactions")}
+          onPress={() => goToScreen("transactions")}
         />
 
         <TabButton
@@ -383,23 +232,6 @@ export default function MainTabs({ onLogout }: MainTabsProps) {
       </View>
     </View>
   );
-}
-
-function getCurrentTime() {
-  const now = new Date();
-
-  const day = String(now.getDate()).padStart(2, "0");
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const year = now.getFullYear();
-
-  const hour = String(now.getHours()).padStart(2, "0");
-  const minute = String(now.getMinutes()).padStart(2, "0");
-
-  return `${day}/${month}/${year} ${hour}:${minute}`;
-}
-
-function formatMoney(value: number) {
-  return value.toLocaleString("vi-VN") + "đ";
 }
 
 type TabButtonProps = {

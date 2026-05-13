@@ -1,14 +1,13 @@
-import { useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
+
+import type { AppUser } from "../types/auth";
 
 type CurrentParking = {
   plateNumber: string;
@@ -16,34 +15,20 @@ type CurrentParking = {
 };
 
 type HomeScreenProps = {
+  user: AppUser;
   balance: number;
   availableSlots: number;
   currentParking: CurrentParking | null;
-  onCheckin: (plateNumber: string) => void;
-  onCheckout: (plateNumberOut: string) => void;
 };
 
 export default function HomeScreen({
+  user,
   balance,
   availableSlots,
   currentParking,
-  onCheckin,
-  onCheckout,
 }: HomeScreenProps) {
-  const [plateNumberIn, setPlateNumberIn] = useState("");
-  const [plateNumberOut, setPlateNumberOut] = useState("");
-
   const isParking = currentParking !== null;
-
-  const handleCheckinPress = () => {
-    onCheckin(plateNumberIn);
-    setPlateNumberIn("");
-  };
-
-  const handleCheckoutPress = () => {
-    onCheckout(plateNumberOut);
-    setPlateNumberOut("");
-  };
+  const studentCode = user.studentCode || user.username;
 
   return (
     <KeyboardAvoidingView
@@ -60,12 +45,12 @@ export default function HomeScreen({
         <View style={styles.headerCard}>
           <Text style={styles.school}>Đại học Bách khoa Hà Nội</Text>
           <Text style={styles.title}>Smart Parking</Text>
-          <Text style={styles.subtitle}>Xin chào, Nguyễn Văn A</Text>
+          <Text style={styles.subtitle}>Xin chào, {user.fullName}</Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.label}>Mã sinh viên</Text>
-          <Text style={styles.value}>SV001</Text>
+          <Text style={styles.value}>{studentCode}</Text>
         </View>
 
         <View style={styles.card}>
@@ -88,56 +73,18 @@ export default function HomeScreen({
           {currentParking && (
             <View style={styles.parkingInfo}>
               <Text style={styles.infoText}>
-                Biển số lúc vào: {currentParking.plateNumber}
+                Biển số xe: {currentParking.plateNumber}
               </Text>
               <Text style={styles.infoText}>
-                Giờ vào: {currentParking.checkinTime}
+                Giờ vào: {formatDateTime(currentParking.checkinTime)}
               </Text>
             </View>
           )}
 
-          {!isParking && (
-            <View style={styles.inputBox}>
-              <Text style={styles.inputLabel}>Biển số xe lúc vào</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ví dụ: 29A-12345"
-                value={plateNumberIn}
-                onChangeText={setPlateNumberIn}
-                autoCapitalize="characters"
-                returnKeyType="done"
-              />
-            </View>
-          )}
-
-          {isParking && (
-            <View style={styles.inputBox}>
-              <Text style={styles.inputLabel}>Biển số xe lúc ra</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Nhập lại biển số khi ra"
-                value={plateNumberOut}
-                onChangeText={setPlateNumberOut}
-                autoCapitalize="characters"
-                returnKeyType="done"
-              />
-
-              <Text style={styles.hintText}>
-                Hệ thống sẽ đối chiếu với biển số đã lưu lúc vào bãi
-              </Text>
-            </View>
-          )}
+          <Text style={styles.noteText}>
+            Việc xác nhận xe vào/ra bãi được thực hiện bởi nhân viên bãi đỗ xe.
+          </Text>
         </View>
-
-        {isParking ? (
-          <Pressable style={styles.checkoutButton} onPress={handleCheckoutPress}>
-            <Text style={styles.buttonText}>Mô phỏng xe ra bãi</Text>
-          </Pressable>
-        ) : (
-          <Pressable style={styles.checkinButton} onPress={handleCheckinPress}>
-            <Text style={styles.buttonText}>Mô phỏng xe vào bãi</Text>
-          </Pressable>
-        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -145,6 +92,16 @@ export default function HomeScreen({
 
 function formatMoney(value: number) {
   return value.toLocaleString("vi-VN") + "đ";
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("vi-VN");
 }
 
 const PRIMARY = "#C8102E";
@@ -236,50 +193,10 @@ const styles = StyleSheet.create({
     color: TEXT,
     marginBottom: 4,
   },
-  inputBox: {
-    marginTop: 14,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: "#F3E3E6",
-  },
-  inputLabel: {
+  noteText: {
+    marginTop: 12,
     fontSize: 14,
-    fontWeight: "700",
-    color: TEXT,
-    marginBottom: 8,
-  },
-  input: {
-    height: 46,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    backgroundColor: "#FFFDFD",
-  },
-  hintText: {
-    marginTop: 8,
-    fontSize: 12,
     color: SUBTEXT,
-  },
-  checkoutButton: {
-    height: 52,
-    backgroundColor: PRIMARY,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  checkinButton: {
-    height: 52,
-    backgroundColor: PRIMARY_DARK,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  buttonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "800",
+    lineHeight: 20,
   },
 });

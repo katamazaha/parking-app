@@ -10,37 +10,51 @@ import {
   View,
 } from "react-native";
 
+import { api } from "../services/api";
+
 type TopupScreenProps = {
   balance: number;
+  studentCode: string;
   onBack: () => void;
-  onTopupSuccess: (amount: number) => void;
+  onTopupRequestCreated: () => void;
 };
 
 const AMOUNTS = [10000, 20000, 50000, 100000];
 
 export default function TopupScreen({
   balance,
+  studentCode,
   onBack,
-  onTopupSuccess,
+  onTopupRequestCreated,
 }: TopupScreenProps) {
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
 
-  const handleTopup = () => {
+  const handleTopup = async () => {
     if (!selectedAmount) {
       Alert.alert("Thông báo", "Vui lòng chọn số tiền cần nạp");
       return;
     }
 
-    Alert.alert(
-      "Nạp tiền thành công",
-      `Bạn đã nạp ${formatMoney(selectedAmount)} vào tài khoản`,
-      [
-        {
-          text: "OK",
-          onPress: () => onTopupSuccess(selectedAmount),
-        },
-      ]
-    );
+    try {
+      const response = await api.post("/topup-requests", {
+        studentCode,
+        amount: selectedAmount,
+      });
+
+      Alert.alert(
+        response.data.success ? "Thành công" : "Thất bại",
+        response.data.message
+      );
+
+      if (response.data.success) {
+        onTopupRequestCreated();
+      }
+    } catch (error: any) {
+      Alert.alert(
+        "Lỗi kết nối",
+        error?.message || "Không thể tạo yêu cầu nạp tiền"
+      );
+    }
   };
 
   return (
@@ -56,7 +70,9 @@ export default function TopupScreen({
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.title}>Nạp tiền</Text>
-        <Text style={styles.subtitle}>Chọn số tiền muốn nạp vào ví gửi xe</Text>
+        <Text style={styles.subtitle}>
+          Tạo yêu cầu nạp tiền, chờ quản lý xác nhận
+        </Text>
 
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Số dư hiện tại</Text>
@@ -92,13 +108,20 @@ export default function TopupScreen({
         </View>
 
         <View style={styles.infoBox}>
-          <Text style={styles.infoTitle}>Phương thức thanh toán demo</Text>
-          <Text style={styles.infoText}>Chuyển khoản / QR thanh toán</Text>
-          <Text style={styles.infoText}>Nội dung: NAPTIEN_SV001</Text>
+          <Text style={styles.infoTitle}>Quy trình nạp tiền</Text>
+          <Text style={styles.infoText}>
+            1. Sinh viên tạo yêu cầu nạp tiền
+          </Text>
+          <Text style={styles.infoText}>
+            2. Người quản lý xác nhận giao dịch
+          </Text>
+          <Text style={styles.infoText}>
+            3. Số dư ví sẽ được cộng sau khi xác nhận
+          </Text>
         </View>
 
         <Pressable style={styles.confirmButton} onPress={handleTopup}>
-          <Text style={styles.confirmText}>Xác nhận nạp tiền</Text>
+          <Text style={styles.confirmText}>Tạo yêu cầu nạp tiền</Text>
         </Pressable>
 
         <Pressable style={styles.backButton} onPress={onBack}>

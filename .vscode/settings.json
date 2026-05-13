@@ -4,4 +4,10 @@
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
   }
+  "editor.formatOnSave": false,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "never",
+    "source.fixAll": "never",
+    "source.fixAll.eslint": "never"
+  }
 }
